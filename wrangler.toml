@@ -1,0 +1,16 @@
+name = "vuechest-realtime"
+main = "src/index.js"
+compatibility_date = "2024-12-01"
+
+# Durable Objects
+[[durable_objects.bindings]]
+name = "LOBBY"
+class_name = "Lobby"
+
+[[durable_objects.bindings]]
+name = "GAME_ROOM"
+class_name = "GameRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Lobby", "GameRoom"]

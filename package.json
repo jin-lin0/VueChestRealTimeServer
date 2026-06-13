@@ -1,13 +1,13 @@
 {
-  "name": "vuechest-realtime-server",
+  "name": "vuechest-realtime",
   "version": "1.0.0",
-  "description": "VueChest 实时通信服务器 - WebSocket 游戏/聊天等长连接服务",
-  "main": "index.js",
+  "private": true,
   "scripts": {
-    "start": "node index.js",
-    "dev": "node --watch index.js"
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail"
   },
-  "dependencies": {
-    "ws": "^8.18.2"
+  "devDependencies": {
+    "wrangler": "^4.0.0"
   }
 }
