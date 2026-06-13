@@ -1,0 +1,13 @@
+{
+  "name": "vuechest-realtime-server",
+  "version": "1.0.0",
+  "description": "VueChest 实时通信服务器 - WebSocket 游戏/聊天等长连接服务",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.2"
+  }
+}
