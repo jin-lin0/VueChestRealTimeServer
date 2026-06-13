@@ -1,7 +1,7 @@
 // 贪吃蛇多人对战 - 游戏配置常量
 export const CONFIG = {
   BOARD_SIZE: 19,
-  TICK_INTERVAL_MS: 300,
+  TICK_INTERVAL_MS: 600,
   INITIAL_HEALTH: 100,
   HP_DRAIN_PER_TICK: 1,
   SUPPLY_HEAL: 30,
@@ -21,7 +21,7 @@ export const CONFIG = {
     RIGHT: { x: 1, y: 0 },
   }),
   ITEM_TYPE: Object.freeze({
-    SUPPLY: 'supply',
-    SPIDER: 'spider',
+    SUPPLY: "supply",
+    SPIDER: "spider",
   }),
-}
+};
