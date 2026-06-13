@@ -24,16 +24,27 @@ export class GameRoom extends DurableObject {
     this.countdownTimer = null;
   }
 
-  /** 新玩家接入（Worker 调用，已创建好 WebSocket） */
-  async handleSession(webSocket, playerName, roomId) {
-    this.roomId = roomId;
-    webSocket.accept();
+  /** 入口：fetch（处理 WebSocket 升级 + 游戏逻辑） */
+  async fetch(request) {
+    // 创建 WebSocket 对
+    const pair = new WebSocketPair();
+    const [client, server] = Object.values(pair);
+    server.accept();
+
+    const url = new URL(request.url);
+    const playerName = url.searchParams.get("name") || "匿名";
+
+    // 从 URL 提取 roomId
+    const path = url.pathname;
+    this.roomId = path.startsWith("/snake/game/")
+      ? path.slice("/snake/game/".length)
+      : crypto.randomUUID().slice(0, 8);
 
     const playerId = this.nextPlayerId++;
-    this.players.push({ ws: webSocket, playerId, name: playerName, ready: false });
+    this.players.push({ ws: server, playerId, name: playerName, ready: false });
 
     // 通知新玩家
-    this.sendTo(webSocket, {
+    this.sendTo(server, {
       type: "room_joined",
       room: this.getRoomInfo(),
     });
@@ -47,15 +58,17 @@ export class GameRoom extends DurableObject {
     this.notifyLobby();
 
     // 监听消息
-    webSocket.addEventListener("message", (event) => {
+    server.addEventListener("message", (event) => {
       try {
-        this.handleMessage(webSocket, JSON.parse(event.data));
+        this.handleMessage(server, JSON.parse(event.data));
       } catch { /* ignore */ }
     });
 
-    webSocket.addEventListener("close", () => {
-      this.handleDisconnect(webSocket);
+    server.addEventListener("close", () => {
+      this.handleDisconnect(server);
     });
+
+    return new Response(null, { status: 101, webSocket: client });
   }
 
   // ─── 消息处理 ────────────────────────────
