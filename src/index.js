@@ -4,122 +4,135 @@
  *       /snake/game/:roomId  → GameRoom DO
  *       /snake/create → 创建新房间
  */
-import { Lobby } from './Lobby.js'
-import { GameRoom } from './GameRoom.js'
+import { Lobby } from "./Lobby.js";
+import { GameRoom } from "./GameRoom.js";
 
-export { Lobby }
-export { GameRoom }
+export { Lobby };
+export { GameRoom };
+
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, X-Client-Geo",
+};
+
+function corsResponse(body, status = 200) {
+  return new Response(body, {
+    status,
+    headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+  });
+}
 
 export default {
   async fetch(request, env, ctx) {
-    const url = new URL(request.url)
-    const path = url.pathname
+    // 预检请求直接返回
+    if (request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: CORS_HEADERS });
+    }
+
+    const url = new URL(request.url);
+    const path = url.pathname;
 
     // 健康检查
-    if (path === '/health') {
-      return new Response(JSON.stringify({ status: 'ok' }), {
-        headers: { 'Content-Type': 'application/json' },
-      })
+    if (path === "/health") {
+      return corsResponse(JSON.stringify({ status: "ok" }));
     }
 
     // ─── 房间列表 ───────────────────────────
-    if (path === '/snake/lobby') {
-      // 尝试 WebSocket 升级
-      const upgradeHeader = request.headers.get('Upgrade')
-      if (upgradeHeader === 'websocket') {
-        return handleLobbyWebSocket(request, env)
+    if (path === "/snake/lobby") {
+      const upgradeHeader = request.headers.get("Upgrade");
+      if (upgradeHeader === "websocket") {
+        return handleLobbyWebSocket(request, env);
       }
       // HTTP 查询
-      const lobbyId = env.LOBBY.idFromName('global')
-      const stub = env.LOBBY.get(lobbyId)
-      return stub.fetch(request)
+      const lobbyId = env.LOBBY.idFromName("global");
+      const stub = env.LOBBY.get(lobbyId);
+      const resp = await stub.fetch(request);
+      // 加上 CORS 头
+      return new Response(resp.body, {
+        ...resp,
+        headers: { ...CORS_HEADERS, ...Object.fromEntries(resp.headers) },
+      });
     }
 
     // ─── 创建新房间 ─────────────────────────
-    if (path === '/snake/create') {
-      const upgradeHeader = request.headers.get('Upgrade')
-      if (upgradeHeader !== 'websocket') {
-        return new Response('WebSocket required', { status: 400 })
+    if (path === "/snake/create") {
+      const upgradeHeader = request.headers.get("Upgrade");
+      if (upgradeHeader !== "websocket") {
+        return corsResponse(
+          JSON.stringify({ error: "WebSocket required" }),
+          400,
+        );
       }
-      return handleCreateGame(request, env)
+      return handleCreateGame(request, env);
     }
 
     // ─── 加入已有房间 ───────────────────────
-    if (path.startsWith('/snake/game/')) {
-      const upgradeHeader = request.headers.get('Upgrade')
-      if (upgradeHeader !== 'websocket') {
-        return new Response('WebSocket required', { status: 400 })
+    if (path.startsWith("/snake/game/")) {
+      const upgradeHeader = request.headers.get("Upgrade");
+      if (upgradeHeader !== "websocket") {
+        return corsResponse(
+          JSON.stringify({ error: "WebSocket required" }),
+          400,
+        );
       }
-      const roomId = path.slice('/snake/game/'.length)
+      const roomId = path.slice("/snake/game/".length);
       if (!roomId) {
-        return new Response('Missing room ID', { status: 400 })
+        return corsResponse(JSON.stringify({ error: "Missing room ID" }), 400);
       }
-      return handleGameWebSocket(request, env, roomId)
+      return handleGameWebSocket(request, env, roomId);
     }
 
     // 其他
-    return new Response('VueChest Realtime Server', { status: 200 })
+    return corsResponse("VueChest Realtime Server");
   },
-}
+};
 
-/** 处理大厅 WebSocket（房间列表） */
+// ─── WebSocket 处理 ───────────────────────────────
+
 async function handleLobbyWebSocket(request, env) {
-  const pair = new WebSocketPair()
-  const [client, server] = Object.values(pair)
+  const pair = new WebSocketPair();
+  const [client, server] = Object.values(pair);
 
-  const lobbyId = env.LOBBY.idFromName('global')
-  const stub = env.LOBBY.get(lobbyId)
+  const lobbyId = env.LOBBY.idFromName("global");
+  const stub = env.LOBBY.get(lobbyId);
 
-  // Lobby DO 处理此 WebSocket
-  await stub.handleSession(server)
+  await stub.handleSession(server);
 
-  return new Response(null, { status: 101, webSocket: client })
+  return new Response(null, { status: 101, webSocket: client });
 }
 
-/** 创建新游戏房间 */
 async function handleCreateGame(request, env) {
-  const pair = new WebSocketPair()
-  const [client, server] = Object.values(pair)
+  const pair = new WebSocketPair();
+  const [client, server] = Object.values(pair);
 
-  // 从 URL 参数获取玩家名
-  const url = new URL(request.url)
-  const playerName = url.searchParams.get('name') || '匿名'
+  const url = new URL(request.url);
+  const playerName = url.searchParams.get("name") || "匿名";
+  const roomId = crypto.randomUUID().slice(0, 8);
 
-  // 生成房间 ID
-  const roomId = crypto.randomUUID().slice(0, 8)
+  const roomDOId = env.GAME_ROOM.idFromName(roomId);
+  const stub = env.GAME_ROOM.get(roomDOId);
 
-  // 获取 GameRoom DO
-  const roomDOId = env.GAME_ROOM.idFromName(roomId)
-  const stub = env.GAME_ROOM.get(roomDOId)
-
-  // 转发 WebSocket 给 DO
-  await stub.handleSession(server, playerName, true, roomId)
-
-  // 额外：通过 WebSocket 子系统发送 roomId（因为 DO 处理完后才能拿到）
-  // DO 的 handleSession 会在内部广播 room_joined 消息
+  await stub.handleSession(server, playerName, true, roomId);
 
   return new Response(null, {
     status: 101,
     webSocket: client,
-    headers: {
-      // 通过自定义 header 传递 roomId
-      'X-Room-Id': roomId,
-    },
-  })
+    headers: { "X-Room-Id": roomId },
+  });
 }
 
-/** 加入已有游戏房间 */
 async function handleGameWebSocket(request, env, roomId) {
-  const pair = new WebSocketPair()
-  const [client, server] = Object.values(pair)
+  const pair = new WebSocketPair();
+  const [client, server] = Object.values(pair);
 
-  const url = new URL(request.url)
-  const playerName = url.searchParams.get('name') || '匿名'
+  const url = new URL(request.url);
+  const playerName = url.searchParams.get("name") || "匿名";
 
-  const roomDOId = env.GAME_ROOM.idFromName(roomId)
-  const stub = env.GAME_ROOM.get(roomDOId)
+  const roomDOId = env.GAME_ROOM.idFromName(roomId);
+  const stub = env.GAME_ROOM.get(roomDOId);
 
-  await stub.handleSession(server, playerName, false, roomId)
+  await stub.handleSession(server, playerName, false, roomId);
 
-  return new Response(null, { status: 101, webSocket: client })
+  return new Response(null, { status: 101, webSocket: client });
 }
